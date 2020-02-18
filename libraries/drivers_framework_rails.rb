@@ -29,6 +29,7 @@ module Drivers
 
       def deploy_after_restart
         setup_rails_console
+        old_after_restart_commands
       end
 
       private
@@ -66,6 +67,16 @@ module Drivers
 
       def environment
         app['environment'].merge(out[:deploy_environment])
+      end
+
+      def old_after_restart_commands
+        # if new_resource.environment['APACHE_SPECTRUM_SUPPORT'] == 'true'
+        #   Chef::Log.info('Modifying Apache Vhosts so Spectrum UI can run on port 80')
+        #   CONFIG_PATH = '/etc/apache2/sites-available/flexcareers_workers.conf'.freeze
+        #   config_file = ::File.open(CONFIG_PATH).read
+        #   config_file = config_file.gsub!('<VirtualHost *:80>', '<VirtualHost *:8080>')
+        #   ::File.open(CONFIG_PATH, 'w') { |file| file.write(config_file) }
+        # end
       end
     end
   end

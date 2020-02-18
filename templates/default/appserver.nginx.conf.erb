@@ -1,172 +1,618 @@
-upstream <%= @name %>_<%= @application[:domains].first %> {
- server unix:<%= @deploy_dir.to_s %>/shared/sockets/<%= @name %>.sock fail_timeout=0;
-}
+<% if @application[:environment_variables]["ENABLE_MANUAL_SSL"].to_s == "true" %>
+  <% @application[:domains].each do |domain| %>
+    <% if domain.include?('.') %>
+      upstream unicorn_<%= domain %> {
+        server unix:<%= @application[:deploy_to]%>/shared/sockets/unicorn.sock fail_timeout=0;
+      }
 
-server {
-  listen <%= @out[:port] %>;
-  server_name <%= @application[:domains].join(" ") %> <%= node['hostname'] %>;
-  access_log <%= @out[:log_dir] %>/<%= @application[:domains].first %>.access.log;
-  error_log <%= @out[:log_dir] %>/<%= @application[:domains].first %>.error.log <%= @out[:log_level] %>;
+      server {
+        listen  443;
+        server_name <%= domain %>;
+        access_log <%= node[:nginx][:log_dir] %>/<%=domain %>-ssl.access.log;
 
-  root <%= File.join(@deploy_dir, 'current', 'public') %>;
+        ssl_certificate /etc/letsencrypt/live/<%= domain %>/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/<%= domain %>/privkey.pem;
 
-  proxy_hide_header X-Powered-By;
-  server_tokens off;
+        ssl on;
+        ssl_verify_client off;
 
-  client_max_body_size <%= @out[:client_max_body_size] || '1m' %>;
-  client_body_timeout <%= @out[:client_body_timeout] || '12' %>;
-  client_header_timeout <%= @out[:client_header_timeout] || '12' %>;
-  keepalive_timeout <%= @out[:keepalive_timeout] || '15' %>;
-  send_timeout <%= @out[:send_timeout] || '10' %>;
+        keepalive_timeout 5;
+        sendfile on;
 
-<% if @application[:enable_ssl] && @out[:force_ssl] %>
-# Force all http requests to https
-<% if @out[:ssl_port].to_i == 443 %>
-  return 301 https://$host$request_uri;
-<% else %>
-  return 301 https://$host:<%= @out[:ssl_port] %>$request_uri;
-<% end %>
-<% else %>
-  # http support
-  location / {
-    try_files $uri/index.html $uri/index.htm @<%= @name %>;
-  }
+        tcp_nopush on;
+        tcp_nodelay off;
+        ssl_session_cache   shared:SSL:10m;
+        ssl_session_timeout 10m;
+        ssl_protocols SSLv3 TLSv1 TLSv1.1 TLSv1.2;
+        ssl_ciphers "EECDH+ECDSA+AESGCM EECDH+aRSA+AESGCM EECDH+ECDSA+SHA384 EECDH+ECDSA+SHA256 EECDH+aRSA+SHA384 EECDH+aRSA+SHA256 EECDH+aRSA+RC4 EECDH EDH+aRSA RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !PSK !SRP !DSS";
+        ssl_prefer_server_ciphers on;
 
-  location ^~ /assets/ {
-    gzip_static on;
-    expires max;
-    add_header Cache-Control public;
-    add_header Access-Control-Allow-Origin "$http_origin";
-    add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE';
-    add_header Access-Control-Expose-Headers ETag;
-    add_header X-Content-Type-Options nosniff;
-  }
+        gzip on;
+        gzip_http_version 1.0;
+        gzip_proxied any;
+        gzip_min_length 500;
+        gzip_disable "MSIE [1-6]\.";
+        gzip_types text/plain text/xml text/css
+                text/comma-separated-values
+                text/javascript application/x-javascript
+                application/atom+xml;
 
-  location @<%= @name %> {
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header Host $http_host;
-    <% if @out[:enable_upgrade_method] %>
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
+        root <%= @application[:absolute_document_root] %>;
+
+        <% if @application[:nginx] && @application[:nginx][:client_max_body_size] %>
+          client_max_body_size <%= @application[:nginx][:client_max_body_size] %>;
+        <% end %>
+
+        add_header Access-Control-Allow-Headers "X-Requested-With";
+        add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS";
+        add_header Access-Control-Allow-Origin "*";
+
+        if (-f $document_root/system/maintenance.html) {
+          return 503;
+        }
+
+        # block spammy ua
+        if ($http_user_agent ~* "Mozilla/5.0 Jorgee"){
+          return 500;
+        }
+
+        # prevent these from reaching server
+        location ~ (\.(php|aspx|asp|myadmin)$) {
+          return 404;
+        }
+
+        error_page 503 @maintenance;
+        location @maintenance {
+          rewrite  ^(.*)$  /system/maintenance.html last;
+          break;
+        }
+
+        location ~* \.(otf|eot|ttf|woff)$ {
+          add_header Access-Control-Allow-Origin *;
+        }
+
+        location / {
+          try_files $uri/index.html $uri/index.htm @unicorn;
+          proxy_buffer_size         128k;
+          proxy_buffers             4 256k;
+          proxy_busy_buffers_size   256k;
+          proxy_temp_file_write_size 256k;
+        }
+
+        location /nginx_status {
+          stub_status on;
+          access_log off;
+          allow 127.0.0.1;
+          deny all;
+        }
+
+        location ~ ^/assets/ {
+          gzip_static on;
+          expires max;
+          add_header Cache-Control public;
+          add_header Access-Control-Allow-Origin *;
+
+          add_header ETag "";
+          break;
+        }
+
+        location /cable {
+          proxy_pass http://localhost:28080/;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "Upgrade";
+        }
+
+        location @unicorn {
+          proxy_set_header X-Forwarded-Proto https;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header Host $http_host;
+          proxy_redirect off;
+          proxy_buffer_size   128k;
+          proxy_buffers   4 256k;
+          proxy_busy_buffers_size   256k;
+          proxy_temp_file_write_size 256k;
+
+        <% if node[:nginx] && node[:nginx][:proxy_read_timeout] -%>
+          proxy_read_timeout <%= node[:nginx][:proxy_read_timeout] %>;
+        <% end -%>
+        <% if node[:nginx] && node[:nginx][:proxy_send_timeout] -%>
+          proxy_send_timeout <%= node[:nginx][:proxy_send_timeout] %>;
+        <% end -%>
+
+          # If you don't find the filename in the static files
+          # Then request it from the unicorn server
+          if (!-f $request_filename) {
+            proxy_pass http://unicorn_<%= domain %>;
+            break;
+          }
+        }
+
+        error_page 500 502 503 504 /500.html;
+        location = /500.html {
+          root <%= @application[:absolute_document_root] %>;
+        }
+      }
+
+      server {
+        listen 80;
+        server_name <%= domain %>;
+
+        if ($http_x_forwarded_proto != "https") {
+          rewrite ^(.*)$ https://$server_name$1 permanent;
+        }
+      }
     <% end %>
-    proxy_redirect off;
+  <% end %>
 
-    proxy_read_timeout <%= @out[:proxy_read_timeout] || '60' %>;
-    proxy_send_timeout <%= @out[:proxy_send_timeout] || '60' %>;
+<% elsif @application[:environment_variables]["ENABLE_LOAD_BALANCER"].to_s == "true" %>
+  upstream unicorn_<%= @application[:domains].first %> {
+   server unix:<%= @application[:deploy_to]%>/shared/sockets/unicorn.sock fail_timeout=0;
+  }
 
-    # If you don't find the filename in the static files
-    # Then request it from the <%= @name %> server
-    if (!-f $request_filename) {
-      proxy_pass http://<%= @name %>_<%= @application[:domains].first %>;
+  server {
+    listen 1443;
+    server_name <%= @application[:domains].join(" ") %> <%= node[:hostname] %>;
+
+    <% if @application[:log_format] %>
+      <% @application[:log_format].each do |log_format_name| %>
+    access_log <%= node[:nginx][:log_dir] %>/<%= @application[:domains].first %>.access.<%= log_format_name %>.log <%= log_format_name %>;
+      <% end %>
+    <% else %>
+    access_log <%= node[:nginx][:log_dir] %>/<%= @application[:domains].first %>.access.log;
+    <%end %>
+
+    gzip on;
+    gzip_http_version 1.0;
+    gzip_proxied any;
+    gzip_min_length 500;
+    gzip_disable "MSIE [1-6]\.";
+    gzip_types text/plain text/xml text/css
+             text/comma-separated-values
+             text/javascript application/x-javascript
+             application/atom+xml;
+
+    keepalive_timeout 5;
+
+    root <%= @application[:absolute_document_root] %>;
+
+    client_max_body_size 250m;
+
+    add_header Access-Control-Allow-Headers "X-Requested-With";
+    add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS";
+    add_header Access-Control-Allow-Origin "*";
+
+    if (-f $document_root/system/maintenance.html) {
+      return 503;
+    }
+
+    # block spammy ua
+    if ($http_user_agent ~* "Mozilla/5.0 Jorgee"){
+      return 500;
+    }
+
+    # prevent these from reaching server
+    location ~ (\.(php|aspx|asp|myadmin)$) {
+      return 404;
+    }
+
+    # blog redirect
+    <% if @application[:environment_variables]["FLEXBLOGREDIRECT"].to_s == "true" %>
+      set $host_without_www $host;
+      if ($host ~ www\.(.*).*) {
+        set $host_without_www $1;
+      }
+
+      location ~ /posts/(.*) {
+          return 301 http://blog.$host_without_www/$1;
+      }
+
+      location ~ /posts {
+        return 301 http://blog.$host_without_www/;
+      }
+    <% end %>
+
+    error_page 503 @maintenance;
+    location @maintenance {
+       rewrite  ^(.*)$  /system/maintenance.html last;
+       break;
+    }
+
+    location ~* \.(otf|eot|ttf|woff)$ {
+      add_header Access-Control-Allow-Origin *;
+    }
+
+    location /nginx_status {
+      stub_status on;
+      access_log off;
+      allow 127.0.0.1;
+      deny all;
+    }
+
+    location ~ ^/assets/ {
+      gzip_static on;
+      expires max;
+      add_header Cache-Control public;
+      add_header Access-Control-Allow-Origin *;
+
+      add_header ETag "";
       break;
     }
-}
-<% end %>
 
-  location /nginx_status {
-    stub_status on;
-    access_log off;
-    allow 127.0.0.1;
-    deny all;
-  }
+    error_page 500 502 503 504 /500.html;
+    location = /500.html {
+      root <%= @application[:absolute_document_root] %>;
+    }
 
-  <%= @out[:extra_config] %>
+    location / {
+      try_files $uri/index.html $uri/index.htm @unicorn;
+      proxy_buffer_size         128k;
+      proxy_buffers             4 256k;
+      proxy_busy_buffers_size   256k;
+      proxy_temp_file_write_size 256k;
+    }
 
-  error_page 500 502 503 504 /500.html;
-  location = /500.html {
-    root <%= File.join(@deploy_dir, 'current', 'public') %>;
-  }
-}
+    location @unicorn {
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header Host $http_host;
+      proxy_redirect off;
+      proxy_buffer_size   128k;
+      proxy_buffers   4 256k;
+      proxy_busy_buffers_size   256k;
+      proxy_temp_file_write_size 256k;
 
-<% if @application[:enable_ssl] %>
-server {
-  listen <%= @out[:ssl_port] %>;
-  server_name <%= @application[:domains].join(" ") %> <%= node['hostname'] %>;
-  access_log <%= @out[:log_dir] %>/<%= @application[:domains].first %>-ssl.access.log;
-  error_log <%= @out[:log_dir] %>/<%= @application[:domains].first %>-ssl.error.log <%= @out[:log_level] %>;
-
-  ssl on;
-  ssl_certificate <%= @ssl_cert_dir %>/<%= @application[:domains].first %>.crt;
-  ssl_certificate_key <%= @ssl_cert_dir %>/<%= @application[:domains].first %>.key;
-  <% if @application[:ssl_configuration][:chain] -%>
-  ssl_client_certificate <%= @ssl_cert_dir %>/<%= @application[:domains].first %>.ca;
-  <% end -%>
-
-  <% if @out[:ssl_for_legacy_browsers] -%>
-  ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH:ECDHE-RSA-AES128-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA128:DHE-RSA-AES128-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES128-GCM-SHA128:ECDHE-RSA-AES128-SHA384:ECDHE-RSA-AES128-SHA128:ECDHE-RSA-AES128-SHA:ECDHE-RSA-AES128-SHA:DHE-RSA-AES128-SHA128:DHE-RSA-AES128-SHA128:DHE-RSA-AES128-SHA:DHE-RSA-AES128-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES128-GCM-SHA384:AES128-GCM-SHA128:AES128-SHA128:AES128-SHA128:AES128-SHA:AES128-SHA:DES-CBC3-SHA:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!MD5:!PSK:!RC4";
-  ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-  <% else -%>
-  ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
-  ssl_protocols TLSv1.2;
-    <% if Gem::Version.new(node['nginx']['version']) >= Gem::Version.new('1.1.0') -%>
-  ssl_ecdh_curve secp384r1;
+    <% if node[:nginx] && node[:nginx][:proxy_read_timeout] -%>
+      proxy_read_timeout <%= node[:nginx][:proxy_read_timeout] %>;
     <% end -%>
-  <% end -%>
+    <% if node[:nginx] && node[:nginx][:proxy_send_timeout] -%>
+      proxy_send_timeout <%= node[:nginx][:proxy_send_timeout] %>;
+    <% end -%>
 
-  ssl_prefer_server_ciphers on;
-  ssl_session_cache shared:SSL:10m;
-  <% if Gem::Version.new(node['nginx']['version']) >= Gem::Version.new('1.5.9') -%>
-  ssl_session_tickets off;
-  <% end -%>
-  <% if Gem::Version.new(node['nginx']['version']) >= Gem::Version.new('1.3.7') -%>
-  ssl_stapling on;
-  ssl_stapling_verify on;
-  <% end -%>
-  <% if @out[:dhparams].present? -%>
-  ssl_dhparam <%= @ssl_cert_dir %>/<%= @application[:domains].first %>.dhparams.pem;
-  <% end -%>
+      # If you don't find the filename in the static files
+      # Then request it from the unicorn server
+      if (!-f $request_filename) {
+        proxy_pass http://unicorn_<%= @application[:domains].first %>;
+        break;
+      }
+    }
 
-  root <%= File.join(@deploy_dir, 'current', 'public') %>;
-
-  proxy_hide_header X-Powered-By;
-  server_tokens off;
-
-  client_max_body_size <%= @out[:client_max_body_size] || '1m' %>;
-  client_body_timeout <%= @out[:client_body_timeout] || '12' %>;
-  client_header_timeout <%= @out[:client_header_timeout] || '12' %>;
-  keepalive_timeout <%= @out[:keepalive_timeout] || '15' %>;
-  send_timeout <%= @out[:send_timeout] || '10' %>;
-
-  location / {
-    try_files $uri/index.html $uri/index.htm @<%= @name %>;
   }
 
-  location ^~ /assets/ {
-    gzip_static on;
-    expires max;
-    add_header Cache-Control public;
-    add_header Access-Control-Allow-Origin "$http_origin";
-    add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE';
-    add_header Access-Control-Expose-Headers ETag;
-    add_header X-Content-Type-Options nosniff;
-  }
+  server {
+    listen 80;
+    server_name www.flexcareers.com.au;
 
-  location @<%= @name %> {
-    proxy_set_header X-Forwarded-Proto https;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header Host $http_host;
-    <% if @out[:enable_upgrade_method] %>
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    <% end %>
-    proxy_redirect off;
+    location ~ ^/assets/ {
+      gzip_static on;
+      expires max;
+      add_header Cache-Control public;
+      add_header Access-Control-Allow-Origin *;
 
-    proxy_read_timeout <%= @out[:proxy_read_timeout] || '60' %>;
-    proxy_send_timeout <%= @out[:proxy_send_timeout] || '60' %>;
-
-    # If you don't find the filename in the static files
-    # Then request it from the <%= @name %> server
-    if (!-f $request_filename) {
-      proxy_pass http://<%= @name %>_<%= @application[:domains].first %>;
+      add_header ETag "";
       break;
+    }
+
+    if ($http_x_forwarded_proto != "https") {
+      rewrite ^(.*)$ https://$server_name$1 permanent;
     }
   }
 
-  <%= @out[:extra_config_ssl] %>
+  server {
+    listen 80;
+    server_name www.flexcareers.co.nz;
 
-  error_page 500 502 503 504 /500.html;
-  location = /500.html {
-    root <%= File.join(@deploy_dir, 'current', 'public') %>;
+    location ~ ^/assets/ {
+      gzip_static on;
+      expires max;
+      add_header Cache-Control public;
+      add_header Access-Control-Allow-Origin *;
+
+      add_header ETag "";
+      break;
+    }
+
+    if ($http_x_forwarded_proto != "https") {
+      rewrite ^(.*)$ https://$server_name$1 permanent;
+    }
   }
-}
+
+  server {
+    listen 80;
+    server_name flexcareers.com.au;
+
+    rewrite ^(.*)$ https://www.$server_name$1 permanent;
+  }
+
+  server {
+    listen 80;
+    server_name flexcareers.co.nz;
+
+    rewrite ^(.*)$ https://www.$server_name$1 permanent;
+  }
+
+  server {
+    listen 1443;
+    server_name flexcareers.com.au;
+
+    rewrite ^(.*)$ https://www.$server_name$1 permanent;
+  }
+
+  server {
+    listen 1443;
+    server_name flexcareers.co.nz;
+
+    rewrite ^(.*)$ https://www.$server_name$1 permanent;
+  }
+
+<% elsif @application[:environment_variables]["STAGING_LOAD_BALANCER"].to_s == "true" %>
+  upstream unicorn_<%= @application[:domains].first %> {
+   server unix:<%= @application[:deploy_to]%>/shared/sockets/unicorn.sock fail_timeout=0;
+  }
+
+  server {
+    listen 1443;
+    server_name <%= @application[:domains].join(" ") %> <%= node[:hostname] %>;
+
+    <% if @application[:log_format] %>
+      <% @application[:log_format].each do |log_format_name| %>
+    access_log <%= node[:nginx][:log_dir] %>/<%= @application[:domains].first %>.access.<%= log_format_name %>.log <%= log_format_name %>;
+      <% end %>
+    <% else %>
+    access_log <%= node[:nginx][:log_dir] %>/<%= @application[:domains].first %>.access.log;
+    <%end %>
+
+    gzip on;
+    gzip_http_version 1.0;
+    gzip_proxied any;
+    gzip_min_length 500;
+    gzip_disable "MSIE [1-6]\.";
+    gzip_types text/plain text/xml text/css
+             text/comma-separated-values
+             text/javascript application/x-javascript
+             application/atom+xml;
+
+    keepalive_timeout 5;
+
+    root <%= @application[:absolute_document_root] %>;
+
+    client_max_body_size 250m;
+
+    add_header Access-Control-Allow-Headers "X-Requested-With";
+    add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS";
+    add_header Access-Control-Allow-Origin "*";
+
+    if (-f $document_root/system/maintenance.html) {
+      return 503;
+    }
+
+    # block spammy ua
+    if ($http_user_agent ~* "Mozilla/5.0 Jorgee"){
+      return 500;
+    }
+
+    # prevent these from reaching server
+    location ~ (\.(php|aspx|asp|myadmin)$) {
+      return 404;
+    }
+
+    # blog redirect
+    <% if @application[:environment_variables]["FLEXBLOGREDIRECT"].to_s == "true" %>
+      set $host_without_www $host;
+      if ($host ~ www\.(.*).*) {
+        set $host_without_www $1;
+      }
+
+      location ~ /posts/(.*) {
+          return 301 http://blog.$host_without_www/$1;
+      }
+
+      location ~ /posts {
+        return 301 http://blog.$host_without_www/;
+      }
+    <% end %>
+
+    error_page 503 @maintenance;
+    location @maintenance {
+       rewrite  ^(.*)$  /system/maintenance.html last;
+       break;
+    }
+
+    location ~* \.(otf|eot|ttf|woff)$ {
+      add_header Access-Control-Allow-Origin *;
+    }
+
+    location /nginx_status {
+      stub_status on;
+      access_log off;
+      allow 127.0.0.1;
+      deny all;
+    }
+
+    location ~ ^/assets/ {
+      gzip_static on;
+      expires max;
+      add_header Cache-Control public;
+      add_header Access-Control-Allow-Origin *;
+
+      add_header ETag "";
+      break;
+    }
+
+    error_page 500 502 503 504 /500.html;
+    location = /500.html {
+      root <%= @application[:absolute_document_root] %>;
+    }
+
+    location / {
+      try_files $uri/index.html $uri/index.htm @unicorn;
+      proxy_buffer_size         128k;
+      proxy_buffers             4 256k;
+      proxy_busy_buffers_size   256k;
+      proxy_temp_file_write_size 256k;
+    }
+
+    location @unicorn {
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header Host $http_host;
+      proxy_redirect off;
+      proxy_buffer_size   128k;
+      proxy_buffers   4 256k;
+      proxy_busy_buffers_size   256k;
+      proxy_temp_file_write_size 256k;
+
+    <% if node[:nginx] && node[:nginx][:proxy_read_timeout] -%>
+      proxy_read_timeout <%= node[:nginx][:proxy_read_timeout] %>;
+    <% end -%>
+    <% if node[:nginx] && node[:nginx][:proxy_send_timeout] -%>
+      proxy_send_timeout <%= node[:nginx][:proxy_send_timeout] %>;
+    <% end -%>
+
+      # If you don't find the filename in the static files
+      # Then request it from the unicorn server
+      if (!-f $request_filename) {
+        proxy_pass http://unicorn_<%= @application[:domains].first %>;
+        break;
+      }
+    }
+
+  }
+
+  server {
+    listen 80;
+    server_name staging.flexcareers.com.au;
+
+    if ($http_x_forwarded_proto != "https") {
+      rewrite ^(.*)$ https://$server_name$1 permanent;
+    }
+  }
+
+  server {
+    listen 80;
+    server_name staging.flexcareers.co.nz;
+
+    if ($http_x_forwarded_proto != "https") {
+      rewrite ^(.*)$ https://$server_name$1 permanent;
+    }
+  }
+
+  server {
+    listen 1443;
+    server_name staging.flexcareers.com.au;
+
+    rewrite ^(.*)$ https://$server_name$1 permanent;
+  }
+
+  server {
+    listen 1443;
+    server_name staging.flexcareers.co.nz;
+
+    rewrite ^(.*)$ https://$server_name$1 permanent;
+  }
+
+<% else %>
+  upstream unicorn_<%= @application[:domains].first %> {
+   server unix:<%= @application[:deploy_to]%>/shared/sockets/unicorn.sock fail_timeout=0;
+  }
+
+  server {
+    listen 80;
+    server_name <%= @application[:domains].join(" ") %> ;
+
+    <% if @application[:log_format] %>
+      <% @application[:log_format].each do |log_format_name| %>
+    access_log <%= node[:nginx][:log_dir] %>/<%= @application[:domains].first %>.access.<%= log_format_name %>.log <%= log_format_name %>;
+      <% end %>
+    <% else %>
+    access_log <%= node[:nginx][:log_dir] %>/<%= @application[:domains].first %>.access.log;
+    <%end %>
+
+    keepalive_timeout 5;
+
+    root <%= @application[:absolute_document_root] %>;
+
+    client_max_body_size 250m;
+
+    add_header Access-Control-Allow-Headers "X-Requested-With";
+    add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS";
+    add_header Access-Control-Allow-Origin "*";
+
+    if (-f $document_root/system/maintenance.html) {
+      return 503;
+    }
+
+    # block spammy ua
+    if ($http_user_agent ~* "Mozilla/5.0 Jorgee"){
+      return 500;
+    }
+
+    # prevent these from reaching server
+    location ~ (\.(php|aspx|asp|myadmin)$) {
+      return 404;
+    }
+
+    error_page 503 @maintenance;
+    location @maintenance {
+       rewrite  ^(.*)$  /system/maintenance.html last;
+       break;
+    }
+
+    location ~* \.(otf|eot|ttf|woff)$ {
+      add_header Access-Control-Allow-Origin *;
+    }
+
+    location /nginx_status {
+      stub_status on;
+      access_log off;
+      allow 127.0.0.1;
+      deny all;
+    }
+
+    location ~ ^/assets/ {
+      gzip_static on;
+      expires max;
+      add_header Cache-Control public;
+      add_header Access-Control-Allow-Origin *;
+
+      add_header ETag "";
+      break;
+    }
+
+    error_page 500 502 503 504 /500.html;
+    location = /500.html {
+      root <%= @application[:absolute_document_root] %>;
+    }
+
+    location / {
+      try_files $uri/index.html $uri/index.htm @unicorn;
+      proxy_buffer_size         128k;
+      proxy_buffers             4 256k;
+      proxy_busy_buffers_size   256k;
+      proxy_temp_file_write_size 256k;
+    }
+
+    location @unicorn {
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header Host $http_host;
+      proxy_redirect off;
+      proxy_buffer_size   128k;
+      proxy_buffers   4 256k;
+      proxy_busy_buffers_size   256k;
+      proxy_temp_file_write_size 256k;
+
+    <% if node[:nginx] && node[:nginx][:proxy_read_timeout] -%>
+      proxy_read_timeout <%= node[:nginx][:proxy_read_timeout] %>;
+    <% end -%>
+    <% if node[:nginx] && node[:nginx][:proxy_send_timeout] -%>
+      proxy_send_timeout <%= node[:nginx][:proxy_send_timeout] %>;
+    <% end -%>
+
+      # If you don't find the filename in the static files
+      # Then request it from the unicorn server
+      if (!-f $request_filename) {
+        proxy_pass http://unicorn_<%= @application[:domains].first %>;
+        break;
+      }
+    }
+
+  }
 <% end %>
