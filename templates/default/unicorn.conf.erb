@@ -2,13 +2,13 @@ worker_processes <%= @out[:worker_processes] %>
 
 user "<%= node['deployer']['user'] %>"
 
-working_directory "<%= @deploy_dir %>/current"
+working_directory "/srv/www/flexcareers/current"
 <% if @out[:port] %>
 listen "0.0.0.0:<%= @out[:port] %>",
 <% elsif @webserver == 'apache2' %>
 listen "127.0.0.1:3000",
 <% else %>
-listen "<%= @deploy_dir %>/shared/sockets/unicorn.sock",
+listen "/srv/www/flexcareers/shared/sockets/unicorn.sock",
 <% end %>
        :backlog => <%= @out[:backlog] %>,
        :tcp_nodelay => <%= @out[:tcp_nodelay] %>,
@@ -20,8 +20,8 @@ timeout <%= @out[:timeout] %>
 
 pid "/run/lock/<%= @app_shortname %>/unicorn.pid"
 
-stderr_path "<%= @deploy_dir %>/shared/log/unicorn.stderr.log"
-stdout_path "<%= @deploy_dir %>/shared/log/unicorn.stdout.log"
+stderr_path "/srv/www/flexcareers/shared/log/unicorn.stderr.log"
+stdout_path "/srv/www/flexcareers/shared/log/unicorn.stdout.log"
 
 preload_app <%= @out[:preload_app] %>
 <% if @out[:preload_app] %>
@@ -37,7 +37,7 @@ GC.copy_on_write_friendly = true if GC.respond_to?(:copy_on_write_friendly=)
 # ensure Unicorn doesn't use a stale Gemfile when restarting
 # more info: https://willj.net/2011/08/02/fixing-the-gemfile-not-found-bundlergemfilenotfound-error/
 before_exec do |server|
-  ENV['BUNDLE_GEMFILE'] = "<%= @deploy_dir %>/current/Gemfile"
+  ENV['BUNDLE_GEMFILE'] = "/srv/www/flexcareers/current/Gemfile"
 end
 
 before_fork do |server, worker|
