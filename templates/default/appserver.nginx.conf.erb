@@ -320,28 +320,32 @@
     listen 80;
     server_name flexcareers.com.au;
 
-    rewrite ^(.*)$ https://www.$server_name$1 permanent;
+    if ($http_x_forwarded_proto != "https") {
+      rewrite ^(.*)$ https://$server_name$1 permanent;
+    }
   }
 
   server {
     listen 80;
     server_name flexcareers.co.nz;
 
-    rewrite ^(.*)$ https://www.$server_name$1 permanent;
+    if ($http_x_forwarded_proto != "https") {
+      rewrite ^(.*)$ https://$server_name$1 permanent;
+    }
   }
 
   server {
     listen 1443;
     server_name flexcareers.com.au;
 
-    rewrite ^(.*)$ https://www.$server_name$1 permanent;
+    rewrite ^(.*)$ https://$server_name$1 permanent;
   }
 
   server {
     listen 1443;
-    server_name flexcareers.co.nz;
+    server_name flexcareers.com.nz;
 
-    rewrite ^(.*)$ https://www.$server_name$1 permanent;
+    rewrite ^(.*)$ https://$server_name$1 permanent;
   }
 
 <% elsif @application["environment"]["STAGING_LOAD_BALANCER"].to_s == "true" %>
@@ -479,7 +483,7 @@
 
   server {
     listen 80;
-    server_name railsstaging.flexcareers.com.au;
+    server_name staging.flexcareers.com.au;
 
     if ($http_x_forwarded_proto != "https") {
       rewrite ^(.*)$ https://$server_name$1 permanent;
@@ -488,7 +492,7 @@
 
   server {
     listen 80;
-    server_name railsstaging.flexcareers.co.nz;
+    server_name staging.flexcareers.co.nz;
 
     if ($http_x_forwarded_proto != "https") {
       rewrite ^(.*)$ https://$server_name$1 permanent;
@@ -497,14 +501,14 @@
 
   server {
     listen 1443;
-    server_name railsstaging.flexcareers.com.au;
+    server_name staging.flexcareers.com.au;
 
     rewrite ^(.*)$ https://$server_name$1 permanent;
   }
 
   server {
     listen 1443;
-    server_name railsstaging.flexcareers.co.nz;
+    server_name staging.flexcareers.co.nz;
 
     rewrite ^(.*)$ https://$server_name$1 permanent;
   }
