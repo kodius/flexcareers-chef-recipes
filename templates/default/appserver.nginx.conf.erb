@@ -479,6 +479,14 @@
       }
     }
 
+    location ^~ /find/ {
+      resolver new-ubuntu-load-balancer-79075929.ap-southeast-1.elb.amazonaws.com;
+      set $lux_endpoint http://istaging.longtailux.com;
+      rewrite ^/find/(.*) /$1 break;
+      proxy_pass $lux_endpoint;
+      proxy_set_header SERVER_NAME "https://staging.flexcareers.com.au/find";
+      proxy_pass_request_headers on;
+    }
   }
 
   server {
