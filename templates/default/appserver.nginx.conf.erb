@@ -479,8 +479,8 @@
       }
     }
 
-    location ^~ /find/ {
-      resolver new-ubuntu-load-balancer-79075929.ap-southeast-1.elb.amazonaws.com;
+    location ^~ /find {
+      resolver 8.8.8.8;
       set $lux_endpoint http://istaging.longtailux.com;
       rewrite ^/find/(.*) /$1 break;
       proxy_pass $lux_endpoint;
