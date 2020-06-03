@@ -487,6 +487,15 @@
       proxy_set_header SERVER_NAME "https://staging.flexcareers.com.au/find";
       proxy_pass_request_headers on;
     }
+
+    location ^~ /ltux/ {
+      resolver 8.8.8.8;
+      set $lux_endpoint http://istaging.longtailux.com;
+      rewrite ^/ltux/(.*) /$1 break;
+      proxy_pass $lux_endpoint;
+      proxy_set_header SERVER_NAME "https://staging.flexcareers.com.au/ltux";
+      proxy_pass_request_headers on;
+    }
   }
 
   server {
