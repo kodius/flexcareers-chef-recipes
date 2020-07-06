@@ -173,6 +173,7 @@
              application/atom+xml;
 
     keepalive_timeout 5;
+    server_tokens off; # Added duo to PCI vulnerability scan
 
     root /srv/www/flexcareers/current/public/;
 
@@ -276,6 +277,23 @@
       }
     }
 
+    location ^~ /find/ {
+      resolver 8.8.8.8;
+      set $lux_endpoint http://istaging.longtailux.com;
+      rewrite ^/find/(.*) /$1 break;
+      proxy_pass $lux_endpoint;
+      proxy_set_header SERVER_NAME "https://www.flexcareers.com.au/find";
+      proxy_pass_request_headers on;
+    }
+
+    location ^~ /ltux/ {
+      resolver 8.8.8.8;
+      set $lux_endpoint http://istaging.longtailux.com;
+      rewrite ^/ltux/(.*) /$1 break;
+      proxy_pass $lux_endpoint;
+      proxy_set_header SERVER_NAME "https://www.flexcareers.com.au/ltux";
+      proxy_pass_request_headers on;
+    }
   }
 
   server {
@@ -488,7 +506,7 @@
       proxy_pass_request_headers on;
     }
 
-    location ^~ /ltux/ {
+    location ^~ /ltux {
       resolver 8.8.8.8;
       set $lux_endpoint http://istaging.longtailux.com;
       rewrite ^/ltux/(.*) /$1 break;
