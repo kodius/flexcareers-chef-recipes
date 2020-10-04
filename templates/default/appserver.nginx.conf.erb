@@ -430,7 +430,7 @@
 
     add_header Access-Control-Allow-Headers "X-Requested-With";
     add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS";
-    add_header Access-Control-Allow-Origin $server_name;
+    add_header Access-Control-Allow-Origin "https://staging.flexcareers.com.au";
 
     if (-f $document_root/system/maintenance.html) {
       return 503;
@@ -469,7 +469,7 @@
     }
 
     location ~* \.(otf|eot|ttf|woff)$ {
-      add_header Access-Control-Allow-Origin $server_name;
+      add_header Access-Control-Allow-Origin "*";
     }
 
     location /nginx_status {
@@ -483,7 +483,7 @@
       gzip_static on;
       expires max;
       add_header Cache-Control public;
-      add_header Access-Control-Allow-Origin $server_name;
+      add_header Access-Control-Allow-Origin "*";
 
       add_header ETag "";
       break;
