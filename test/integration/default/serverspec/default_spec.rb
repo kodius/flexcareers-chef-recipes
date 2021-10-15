@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 describe 'opsworks_ruby::setup' do
-  describe package('ruby2.6') do
+  describe package('ruby2.7') do
     it { should be_installed }
   end
 
@@ -81,14 +81,6 @@ describe 'opsworks_ruby::configure' do
       its(:content) { should include 'workers 4' }
       its(:content) { should include 'unix:///srv/www/dummy_project/shared/sockets/puma.sock' }
       its(:content) { should include 'environment "production"' }
-    end
-
-    describe file('/srv/www/dummy_project/shared/scripts/puma.service') do
-      its(:content) { should include 'ENV[\'ENV_VAR1\'] = "test"' }
-      its(:content) { should include 'ENV[\'RAILS_ENV\'] = "production"' }
-      its(:content) { should include 'ENV[\'HOME\'] = "/home/deploy"' }
-      its(:content) { should include 'ENV[\'USER\'] = "deploy"' }
-      its(:content) { should include 'PID_PATH="/run/lock/dummy_project/puma.pid"' }
     end
   end
 

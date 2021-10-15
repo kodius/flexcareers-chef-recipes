@@ -1,7 +1,7 @@
-# opsworks_ruby Cookbook
+# opsworks\_ruby Cookbook
 
 [![Chef cookbook](https://img.shields.io/cookbook/v/opsworks_ruby.svg)](https://supermarket.chef.io/cookbooks/opsworks_ruby)
-[![Build Status](https://travis-ci.org/ajgon/opsworks_ruby.svg?branch=master)](https://travis-ci.org/ajgon/opsworks_ruby)
+[![Build Status](https://github.com/ajgon/opsworks_ruby/actions/workflows/main.yml/badge.svg)](https://github.com/ajgon/opsworks_ruby/actions/workflows/main.yml)
 [![Coverage Status](https://coveralls.io/repos/github/ajgon/opsworks_ruby/badge.svg?branch=master)](https://coveralls.io/github/ajgon/opsworks_ruby?branch=master)
 [![Documentation Status](https://readthedocs.org/projects/opsworks-ruby/badge/?version=latest)](http://opsworks-ruby.readthedocs.io/en/latest/?badge=latest)
 [![Commitizen friendly](https://img.shields.io/badge/commitizen-friendly-brightgreen.svg)](http://commitizen.github.io/cz-cli/)
@@ -19,10 +19,10 @@ guide in [documentation](http://opsworks-ruby.readthedocs.io/en/latest/index.htm
 You can either install everything locally using [rvm](https://rvm.io/) and [pip](https://pypi.python.org/pypi/pip)
 or use the Docker container which includes all necessary dependencies inside it.
 
-### Build documentation
+### Documentation
 
 ```
-docker-compose run cookbook bash -c "cd docs && make html"
+docker-compose run cookbook mkdocs serve -a 0.0.0.0
 ```
 
 ## Contributing
@@ -46,6 +46,8 @@ Author: [Igor Rzegocki](https://www.rzegocki.pl/) ([@ajgon](https://github.com/a
 * John Calvin Young ([@johncalvinyoung](https://github.com/johncalvinyoung))
 * Rich Seviora ([@richseviora](https://github.com/richseviora))
 * Josh Goodall ([@inopinatus](https://github.com/inopinatus))
+* Kazuki Fujii ([@kazukifujii](https://github.com/kazukifujii))
+* Kazuki Nishikawa ([@kzkn](https://github.com/kzkn))
 
 ## License
 

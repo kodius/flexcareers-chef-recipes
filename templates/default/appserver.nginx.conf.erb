@@ -290,7 +290,6 @@
     <% if node[:nginx] && node[:nginx][:proxy_send_timeout] -%>
       proxy_send_timeout <%= node[:nginx][:proxy_send_timeout] %>;
     <% end -%>
-
       # If you don't find the filename in the static files
       # Then request it from the unicorn server
       if (!-f $request_filename) {

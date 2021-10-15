@@ -63,12 +63,15 @@ suites:
               queues:
                 - default
                 - mailers
-  - name: default_with_shoryuken
-    data_bags_path: "test/integration/data_bags/default_with_shoryuken"
+  - name: default_with_shoryuken_and_fullstaq
+    data_bags_path: "test/integration/data_bags/default_with_shoryuken_and_fullstaq"
     run_list:
       - recipe[opsworks_ruby::setup]
       - recipe[opsworks_ruby::deploy]
     attributes:
+      'ruby-version': '2.6'
+      'ruby-variant': 'jemalloc'
+      'ruby-provider': 'fullstaq'
       deploy:
         dummy_project:
           worker:
@@ -84,6 +87,7 @@ suites:
       - recipe[opsworks_ruby::setup]
       - recipe[opsworks_ruby::deploy]
     attributes:
+      'ruby-version': '2.6'
       deploy:
         dummy_project:
           framework:
@@ -188,6 +192,7 @@ suites:
             logrotate_frequency: 'weekly'
             logrotate_template_mode: '0750'
           global:
+            deploy_revision: true
             logrotate_name: 'this-will-be-ignored'
             logrotate_frequency: 'monthly'
             logrotate_log_paths:
@@ -216,4 +221,4 @@ suites:
           webserver:
             adapter: 'apache2'
             port: 8081
-      'ruby-version': '2.6'
+      'ruby-version': '2.7'

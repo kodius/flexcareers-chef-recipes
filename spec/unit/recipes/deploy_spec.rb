@@ -7,42 +7,33 @@
 require 'spec_helper'
 
 describe 'opsworks_ruby::deploy' do
-  let(:chef_runner) do
-    ChefSpec::SoloRunner.new(platform: 'ubuntu', version: '14.04') do |solo_node|
-      deploy = node['deploy']
-      deploy['dummy_project']['source'].delete('ssh_wrapper')
-      solo_node.set['deploy'] = deploy
-    end
-  end
-  let(:chef_run) do
-    chef_runner.converge(described_recipe)
-  end
-  let(:chef_run_rhel) do
-    chef_runner_rhel.converge(described_recipe)
-  end
+  let(:monit_installed) { false }
   before do
     stub_search(:aws_opsworks_app, '*:*').and_return([aws_opsworks_app])
     stub_search(:aws_opsworks_rds_db_instance, '*:*').and_return([aws_opsworks_rds_db_instance])
-  end
-
-  it 'includes recipes' do
-    expect(chef_run).to include_recipe('opsworks_ruby::configure')
+    stub_command('which monit').and_return(monit_installed)
   end
 
   context 'DEPRECATION' do
-    let(:chef_runner) do
+    cached(:chef_runner) do
       ChefSpec::SoloRunner.new(platform: 'ubuntu', version: '14.04') do |solo_node|
         deploy = node['deploy']
         deploy['dummy_project']['keep_releases'] = 10
         solo_node.set['deploy'] = deploy
       end
     end
-    let(:chef_runner_rhel) do
+    cached(:chef_runner_rhel) do
       ChefSpec::SoloRunner.new(platform: 'ubuntu', version: '14.04') do |solo_node|
         deploy = node['deploy']
         deploy['dummy_project']['keep_releases'] = 10
         solo_node.set['deploy'] = deploy
       end
+    end
+    cached(:chef_run) do
+      chef_runner.converge(described_recipe)
+    end
+    cached(:chef_run_rhel) do
+      chef_runner_rhel.converge(described_recipe)
     end
     let(:logs) { [] }
 
@@ -69,6 +60,25 @@ describe 'opsworks_ruby::deploy' do
   end
 
   context 'Postgresql + Git + Unicorn + Nginx + Sidekiq' do
+    cached(:chef_runner) do
+      ChefSpec::SoloRunner.new(platform: 'ubuntu', version: '14.04') do |solo_node|
+        deploy = node['deploy']
+        deploy['dummy_project']['source'].delete('ssh_wrapper')
+        solo_node.set['deploy'] = deploy
+      end
+    end
+    cached(:chef_run) do
+      chef_runner.converge(described_recipe)
+    end
+    cached(:chef_run_rhel) do
+      chef_runner_rhel.converge(described_recipe)
+    end
+    let(:monit_installed) { true }
+
+    it 'includes recipes' do
+      expect(chef_run).to include_recipe('opsworks_ruby::configure')
+    end
+
     it 'creates git wrapper script' do
       expect(chef_run).to create_template('/tmp/ssh-git-wrapper.sh')
     end
@@ -98,13 +108,13 @@ describe 'opsworks_ruby::deploy' do
       )
 
       expect(chef_run).to disable_logrotate_app('rails')
-      expect(chef_run).to run_execute('stop-start unicorn')
+      expect(chef_run).to run_execute('monit restart unicorn_dummy_project')
       expect(deploy).to notify('service[nginx]').to(:reload).delayed
       expect(service).to do_nothing
     end
 
     context 'with nodejs enabled' do
-      let(:chef_runner) do
+      cached(:chef_runner) do
         ChefSpec::SoloRunner.new(platform: 'ubuntu', version: '14.04') do |solo_node|
           deploy = node['deploy']
           deploy['dummy_project']['source'].delete('ssh_wrapper')
@@ -114,6 +124,9 @@ describe 'opsworks_ruby::deploy' do
           solo_node.set['deploy'] = deploy
           solo_node.set['use-nodejs'] = true
         end
+      end
+      cached(:chef_run) do
+        chef_runner.converge(described_recipe)
       end
 
       it 'performs a deploy' do
@@ -145,14 +158,14 @@ describe 'opsworks_ruby::deploy' do
         )
 
         expect(chef_run).to disable_logrotate_app('rails')
-        expect(chef_run).to run_execute('stop-start unicorn')
+        expect(chef_run).to run_execute('monit restart unicorn_dummy_project')
         expect(deploy).to notify('service[nginx]').to(:reload).delayed
         expect(service).to do_nothing
       end
     end
 
     context 'when the location of the generated Git SSH wrapper is overridden' do
-      let(:chef_runner) do
+      cached(:chef_runner) do
         ChefSpec::SoloRunner.new(platform: 'ubuntu', version: '14.04') do |solo_node|
           deploy = node['deploy']
           deploy['dummy_project']['source'].delete('ssh_wrapper')
@@ -160,20 +173,24 @@ describe 'opsworks_ruby::deploy' do
           solo_node.set['deploy'] = deploy
         end
       end
+      cached(:chef_run) do
+        chef_runner.converge(described_recipe)
+      end
 
       it 'creates git wrapper script in the specified location' do
         expect(chef_run).to create_template('/var/tmp/my-git-ssh-wrapper.sh')
       end
     end
 
-    it 'restarts sidekiqs via monit' do
+    it 'restarts unicorn and sidekiqs via monit' do
+      expect(chef_run).to run_execute("monit restart unicorn_#{aws_opsworks_app['shortname']}")
       expect(chef_run).to run_execute("monit restart sidekiq_#{aws_opsworks_app['shortname']}-1")
       expect(chef_run).to run_execute("monit restart sidekiq_#{aws_opsworks_app['shortname']}-2")
     end
   end
 
   context 'Puma + S3 + Apache + resque' do
-    let(:chef_runner) do
+    cached(:chef_runner) do
       ChefSpec::SoloRunner.new(platform: 'ubuntu', version: '14.04') do |solo_node|
         deploy = node['deploy']
         deploy['dummy_project']['source'] = {
@@ -188,7 +205,7 @@ describe 'opsworks_ruby::deploy' do
         solo_node.set['deploy'] = deploy
       end
     end
-    let(:chef_runner_rhel) do
+    cached(:chef_runner_rhel) do
       ChefSpec::SoloRunner.new(platform: 'amazon', version: '2016.03') do |solo_node|
         deploy = node['deploy']
         deploy['dummy_project']['source'] = {
@@ -203,6 +220,13 @@ describe 'opsworks_ruby::deploy' do
         solo_node.set['deploy'] = deploy
       end
     end
+    cached(:chef_run) do
+      chef_runner.converge(described_recipe)
+    end
+    cached(:chef_run_rhel) do
+      chef_runner_rhel.converge(described_recipe)
+    end
+    let(:monit_installed) { true }
     let(:tmpdir) { '/tmp/opsworks_ruby' }
 
     before do
@@ -242,24 +266,25 @@ describe 'opsworks_ruby::deploy' do
       deploy_debian = chef_run.deploy(aws_opsworks_app['shortname'])
 
       expect(deploy_debian).to notify('service[apache2]').to(:reload).delayed
-      expect(chef_run).to run_execute('stop-start puma')
+      expect(chef_run).to run_execute('monit start puma_dummy_project')
     end
 
     it 'performs a deploy on rhel' do
       deploy_rhel = chef_run_rhel.deploy(aws_opsworks_app['shortname'])
 
       expect(deploy_rhel).to notify('service[httpd]').to(:reload).delayed
-      expect(chef_run_rhel).to run_execute('stop-start puma')
+      expect(chef_run_rhel).to run_execute('monit start puma_dummy_project')
     end
 
-    it 'restarts resques via monit' do
+    it 'restarts puma and resques via monit' do
+      expect(chef_run).to run_execute("monit start puma_#{aws_opsworks_app['shortname']}")
       expect(chef_run).to run_execute("monit restart resque_#{aws_opsworks_app['shortname']}-1")
       expect(chef_run).to run_execute("monit restart resque_#{aws_opsworks_app['shortname']}-2")
     end
   end
 
   context 'Thin + http + delayed_job' do
-    let(:chef_runner) do
+    cached(:chef_runner) do
       ChefSpec::SoloRunner.new(platform: 'ubuntu', version: '14.04') do |solo_node|
         deploy = node['deploy']
         deploy['dummy_project']['source'] = {
@@ -273,7 +298,7 @@ describe 'opsworks_ruby::deploy' do
         solo_node.set['deploy'] = deploy
       end
     end
-    let(:chef_runner_rhel) do
+    cached(:chef_runner_rhel) do
       ChefSpec::SoloRunner.new(platform: 'amazon', version: '2016.03') do |solo_node|
         deploy = node['deploy']
         deploy['dummy_project']['source'] = {
@@ -287,6 +312,13 @@ describe 'opsworks_ruby::deploy' do
         solo_node.set['deploy'] = deploy
       end
     end
+    cached(:chef_run) do
+      chef_runner.converge(described_recipe)
+    end
+    cached(:chef_run_rhel) do
+      chef_runner_rhel.converge(described_recipe)
+    end
+    let(:monit_installed) { true }
     let(:tmpdir) { '/tmp/opsworks_ruby' }
 
     before do
@@ -318,14 +350,15 @@ describe 'opsworks_ruby::deploy' do
     end
 
     it 'performs a deploy on debian' do
-      expect(chef_run).to run_execute('stop-start thin')
+      expect(chef_run).to run_execute('monit restart thin_dummy_project')
     end
 
     it 'performs a deploy on rhel' do
-      expect(chef_run_rhel).to run_execute('stop-start thin')
+      expect(chef_run_rhel).to run_execute('monit restart thin_dummy_project')
     end
 
-    it 'restarts delayed_jobs via monit' do
+    it 'restarts thin and delayed_jobs via monit' do
+      expect(chef_run).to run_execute("monit restart thin_#{aws_opsworks_app['shortname']}")
       expect(chef_run).to run_execute("monit restart delayed_job_#{aws_opsworks_app['shortname']}-1")
       expect(chef_run).to run_execute("monit restart delayed_job_#{aws_opsworks_app['shortname']}-2")
     end
@@ -352,7 +385,6 @@ describe 'opsworks_ruby::deploy' do
       solo_node.set['deploy'] = { 'a1' => {}, 'a2' => {}, 'a3' => {} }
       solo_node.set['applications'] = %w[a1 a2]
     end.converge(described_recipe)
-    service = chef_run.service('puma_a1')
 
     expect(chef_run).to create_directory('/run/lock/a1')
     expect(chef_run).to create_directory('/srv/www/a1/shared')
@@ -363,14 +395,12 @@ describe 'opsworks_ruby::deploy' do
     expect(chef_run).to create_directory('/srv/www/a1/shared/vendor/bundle')
     expect(chef_run).to create_template('/srv/www/a1/shared/config/database.yml')
     expect(chef_run).to create_template('/srv/www/a1/shared/config/puma.rb')
-    expect(chef_run).to create_template('/srv/www/a1/shared/scripts/puma.service')
     expect(chef_run).to create_template('/etc/nginx/sites-available/a1.conf')
     expect(chef_run).to create_link('/srv/www/a1/shared/pids')
     expect(chef_run).to create_link('/etc/nginx/sites-enabled/a1.conf')
     expect(chef_run).to enable_logrotate_app('a1-nginx-production')
     expect(chef_run).to enable_logrotate_app('a1-rails-production')
 
-    expect(service).to do_nothing
     expect(chef_run).to deploy_deploy('a1')
     expect(chef_run).not_to deploy_deploy('a2')
   end
@@ -382,16 +412,16 @@ describe 'opsworks_ruby::deploy' do
                                                        ])
     end
 
-    let(:chef_runner) do
-      ChefSpec::SoloRunner.new(platform: 'ubuntu', version: '14.04') do |solo_node|
-        solo_node.set['lsb'] = node['lsb']
-        solo_node.set['deploy'] = { 'a1' => {} }
-        solo_node.set['deploy']['a1']['global']['deploy_dir'] = deploy_dir if deploy_dir
-      end
-    end
-
     context 'when deploy_dir is not specified' do
-      let(:deploy_dir) { nil }
+      cached(:chef_runner) do
+        ChefSpec::SoloRunner.new(platform: 'ubuntu', version: '14.04') do |solo_node|
+          solo_node.set['lsb'] = node['lsb']
+          solo_node.set['deploy'] = { 'a1' => {} }
+        end
+      end
+      cached(:chef_run) do
+        chef_runner.converge(described_recipe)
+      end
 
       it 'deploys a1 using the default deploy directory of /srv/www' do
         expect(chef_run).to create_directory('/srv/www/a1/shared')
@@ -403,12 +433,20 @@ describe 'opsworks_ruby::deploy' do
         expect(chef_run).to create_directory('/run/lock/a1')
         expect(chef_run).to create_template('/srv/www/a1/shared/config/database.yml')
         expect(chef_run).to create_template('/srv/www/a1/shared/config/puma.rb')
-        expect(chef_run).to create_template('/srv/www/a1/shared/scripts/puma.service')
       end
     end
 
     context 'when a deploy_dir is specified' do
-      let(:deploy_dir) { '/some/other/path/to/a1' }
+      cached(:chef_runner) do
+        ChefSpec::SoloRunner.new(platform: 'ubuntu', version: '14.04') do |solo_node|
+          solo_node.set['lsb'] = node['lsb']
+          solo_node.set['deploy'] = { 'a1' => {} }
+          solo_node.set['deploy']['a1']['global']['deploy_dir'] = '/some/other/path/to/a1'
+        end
+      end
+      cached(:chef_run) do
+        chef_runner.converge(described_recipe)
+      end
 
       it 'deploys a1 using the provided deploy directory instead' do
         expect(chef_run).to create_directory('/some/other/path/to/a1/shared')
@@ -421,7 +459,6 @@ describe 'opsworks_ruby::deploy' do
         expect(chef_run).to create_link('/some/other/path/to/a1/shared/pids')
         expect(chef_run).to create_template('/some/other/path/to/a1/shared/config/database.yml')
         expect(chef_run).to create_template('/some/other/path/to/a1/shared/config/puma.rb')
-        expect(chef_run).to create_template('/some/other/path/to/a1/shared/scripts/puma.service')
       end
     end
   end

@@ -12,10 +12,14 @@ default['deployer']['user'] = 'deploy'
 default['deployer']['group'] = 'deploy'
 default['deployer']['home'] = "/home/#{default['deployer']['user']}"
 
+# fixes
+default['patches']['chef12_ssl_fix'] = true
+
 # ruby
 default['apt']['compile_time_update'] = true
 default['build-essential']['compile_time'] = true
-default['ruby-version'] = node['ruby'].try(:[], 'version') || '2.6'
+default['ruby-version'] = node['ruby'].try(:[], 'version') || '2.7'
+default['ruby-provider'] = 'ruby-ng'
 default['nginx']['source']['modules'] = %w[
   nginx::http_ssl_module nginx::http_realip_module nginx::http_gzip_static_module nginx::headers_more_module
   nginx::http_stub_status_module
@@ -45,6 +49,7 @@ default['defaults']['global']['logrotate_frequency'] = 'daily'
 default['defaults']['global']['logrotate_options'] = %w[
   missingok compress delaycompress notifempty copytruncate sharedscripts
 ]
+default['defaults']['global']['deploy_revision'] = false
 default['defaults']['global']['use_nodejs'] = false
 
 if node['use-nodejs']
@@ -76,7 +81,6 @@ default['defaults']['appserver']['dot_env'] = false
 default['defaults']['appserver']['preload_app'] = true
 default['defaults']['appserver']['timeout'] = 60
 default['defaults']['appserver']['worker_processes'] = 4
-default['defaults']['appserver']['after_deploy'] = 'stop-start' # (restart|clean-restart)
 
 ## puma
 
@@ -127,6 +131,7 @@ default['defaults']['webserver']['force_ssl'] = false
 default['defaults']['webserver']['limit_request_body'] = '1048576'
 default['defaults']['webserver']['proxy_timeout'] = '60'
 default['defaults']['webserver']['use_apache2_ppa'] = (node['platform'] == 'ubuntu')
+default['defaults']['webserver']['enable_status'] = true
 
 ## nginx
 

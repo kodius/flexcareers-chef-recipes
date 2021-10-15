@@ -5,25 +5,24 @@ module Drivers
     class Base < Drivers::Base
       include Drivers::Dsl::Notifies
       include Drivers::Dsl::Output
+      include Drivers::Dsl::Packages
+
+      # Hook function called from the 'setup' recipe.
+      def setup
+        super
+        handle_packages
+      end
 
       def configure
         super
         add_appserver_config
-        add_appserver_service_script
-        add_appserver_service_context
       end
 
       def before_deploy
+        super
         setup_application_yml
         setup_dot_env
       end
-
-      def after_deploy
-        action = node['deploy'][app['shortname']].try(:[], 'appserver').try(:[], 'after_deploy') ||
-                 node['defaults']['appserver']['after_deploy']
-        manual_action(action)
-      end
-      alias after_undeploy after_deploy
 
       def validate_app_engine; end
 
@@ -41,19 +40,70 @@ module Drivers
         raise NotImplementedError
       end
 
-      private
-
-      def manual_action(action)
-        deploy_to = deploy_dir(app)
-        service_script = File.join(deploy_to, File.join('shared', 'scripts', "#{adapter}.service"))
-
-        context.execute "#{action} #{adapter}" do
-          command "#{service_script} #{action}"
-          live_stream true
+      # Creates a monit config file for managing the appserver and then notifies
+      # monit to reload it.
+      def add_appserver_monit
+        opts = {
+          app_shortname: app['shortname'],
+          adapter: adapter,
+          appserver_command: appserver_command,
+          appserver_name: adapter,
+          deploy_to: deploy_dir(app),
+          environment: environment,
+          source_cookbook: appserver_monit_template_cookbook
+        }
+        file_path = File.join(node['monit']['basedir'],
+                              "#{opts[:appserver_name]}_#{opts[:app_shortname]}.monitrc")
+        context.template file_path do
+          mode '0640'
+          source "#{opts[:adapter]}.monitrc.erb"
+          cookbook opts[:source_cookbook].to_s
+          variables opts
+          notifies :run, 'execute[monit reload]', :immediately
         end
       end
 
-      # rubocop:disable Metrics/AbcSize
+      # Immediately attempts to restart the appserver using monit.
+      def restart_monit
+        return if ENV['TEST_KITCHEN'] # Don't like it, but we can't run multiple processes in Docker on travis
+
+        context.execute "monit restart #{adapter}_#{app['shortname']}" do
+          retries 3
+        end
+      end
+
+      # If an instance fails to start, the adapter process may not exist
+      # and trying to unmonitor it might fail.
+      def unmonitor_monit
+        monit_status = "monit status | grep -q #{adapter}_#{app['shortname']}"
+        context.execute "monit unmonitor #{adapter}_#{app['shortname']}" do
+          retries 3
+          only_if monit_status
+        end
+      end
+
+      # Invoke the monit start command for the appserver. This may only be
+      # needed during the initial setup of the instance. After that the
+      # 'restart' command is sufficient.
+      def start_monit
+        context.execute "monit start #{adapter}_#{app['shortname']}" do
+          retries 3
+        end
+      end
+
+      private
+
+      # Overriding the appserver monit configs can be useful to provide more
+      # fine-grained control over how the appserver starts, stops and restarts.
+      # It can also allow additional configuration to provide alerting.
+      #
+      # @return [String] configured cookbook to pull custom appserver monit
+      #   configs from. Defaults to `opsworks_ruby`.
+      def appserver_monit_template_cookbook
+        node['deploy'][app['shortname']].try(:[], driver_type).try(:[],
+                                                                   'monit_template_cookbook') || context.cookbook_name
+      end
+
       def add_appserver_config
         opts = { deploy_dir: deploy_dir(app), out: out, deploy_env: deploy_env,
                  webserver: Drivers::Webserver::Factory.build(context, app).adapter,
@@ -67,45 +117,18 @@ module Drivers
           variables opts
         end
       end
-      # rubocop:enable Metrics/AbcSize
-
-      def add_appserver_service_script
-        opts = { deploy_dir: deploy_dir(app), app_shortname: app['shortname'], name: adapter, environment: environment,
-                 command: appserver_command, deploy_env: deploy_env }
-
-        context.template File.join(opts[:deploy_dir], File.join('shared', 'scripts', "#{opts[:name]}.service")) do
-          owner node['deployer']['user']
-          group www_group
-          mode '0755'
-          source 'appserver.service.erb'
-          variables opts
-        end
-      end
-
-      def add_appserver_service_context
-        deploy_to = deploy_dir(app)
-        name = adapter
-
-        context.service "#{name}_#{app['shortname']}" do
-          start_command "#{deploy_to}/shared/scripts/#{name}.service start"
-          stop_command "#{deploy_to}/shared/scripts/#{name}.service stop"
-          restart_command "#{deploy_to}/shared/scripts/#{name}.service restart"
-          status_command "#{deploy_to}/shared/scripts/#{name}.service status"
-        end
-      end
 
       def setup_application_yml
         return unless raw_out[:application_yml]
 
-        node.default['deploy'][app['shortname']]['global']['symlinks']['config/application.yml'] =
-          'config/application.yml'
+        append_to_overwritable_defaults('symlinks', 'config/application.yml' => 'config/application.yml')
         env_config(source_file: 'config/application.yml', destination_file: 'config/application.yml')
       end
 
       def setup_dot_env
         return unless raw_out[:dot_env]
 
-        node.default['deploy'][app['shortname']]['global']['symlinks']['dot_env'] = '.env'
+        append_to_overwritable_defaults('symlinks', 'dot_env' => '.env')
         env_config(source_file: 'dot_env', destination_file: 'dot_env')
       end
 

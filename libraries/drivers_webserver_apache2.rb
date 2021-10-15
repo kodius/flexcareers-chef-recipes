@@ -3,13 +3,16 @@
 module Drivers
   module Webserver
     class Apache2 < Drivers::Webserver::Base
+      ENABLE_MODULES = %w[expires headers lbmethod_byrequests proxy proxy_balancer proxy_http rewrite ssl].freeze
+      DISABLE_MODULES = %w[status].freeze
+
       adapter :apache2
       allowed_engines :apache2
       packages debian: 'apache2', rhel: %w[httpd24 mod24_ssl]
       output filter: %i[
         dhparams keepalive_timeout limit_request_body log_dir log_level proxy_timeout
         ssl_for_legacy_browsers extra_config extra_config_ssl port ssl_port force_ssl
-        appserver_port
+        appserver_port enable_status
       ]
       notifies :deploy,
                action: :reload, resource: { debian: 'service[apache2]', rhel: 'service[httpd]' }, timer: :delayed
@@ -36,7 +39,7 @@ module Drivers
 
       def setup
         handle_packages
-        enable_modules(%w[expires headers lbmethod_byrequests proxy proxy_balancer proxy_http rewrite ssl])
+        enable_and_disable_modules
         install_mod_passenger if passenger?
         add_sites_available_enabled
         define_service(:start)
@@ -45,7 +48,7 @@ module Drivers
       def configure
         define_service
         add_ssl_directory
-        %i[private_key certificate chain].each(&method(:add_ssl_item))
+        %i[private_key certificate chain].each { |item| add_ssl_item(item) }
         add_dhparams
 
         remove_defaults
@@ -91,10 +94,20 @@ module Drivers
         context.execute 'echo "IncludeOptional sites-enabled/*.conf" >> /etc/httpd/conf/httpd.conf'
       end
 
-      def enable_modules(modules = [])
+      def enable_and_disable_modules
         return unless node['platform_family'] == 'debian'
 
-        modules.each { |mod| enable_module(mod) }
+        ENABLE_MODULES.each { |mod| enable_module(mod) }
+        DISABLE_MODULES.each { |mod| disable_module(mod) }
+      end
+
+      def disable_module(mod)
+        return if mod == 'status' && settings[:enable_status]
+
+        notifying_execute "Disable Apache2 module #{mod}" do
+          command "a2dismod #{mod}"
+          only_if "a2query -m #{mod}"
+        end
       end
 
       def enable_module(mod)

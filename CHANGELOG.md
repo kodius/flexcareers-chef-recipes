@@ -1,3 +1,119 @@
+## [1.21.1](https://github.com/ajgon/opsworks_ruby/compare/v1.21.0...v1.21.1) (2021-10-13)
+
+
+### Bug Fixes
+
+* modify the restart process for puma so that it can do a proper restart instead of killing and restarting the app ([#257](https://github.com/ajgon/opsworks_ruby/issues/257)) ([035ffb9](https://github.com/ajgon/opsworks_ruby/commit/035ffb9f286187a323c2b77b7fa15f5b89d52b71))
+
+
+
+# [1.21.0](https://github.com/ajgon/opsworks_ruby/compare/v1.20.3...v1.21.0) (2021-10-08)
+
+
+### Bug Fixes
+
+* patch broken SSL certificates list ([4887cf5](https://github.com/ajgon/opsworks_ruby/commit/4887cf5dcb87dd417e3c6657f41bdb5166b113ef)), closes [#268](https://github.com/ajgon/opsworks_ruby/issues/268)
+* update rubies for ruby-nq and fullstack, set default ruby to 2.7 ([09ba7e1](https://github.com/ajgon/opsworks_ruby/commit/09ba7e190e78cf79a7e42fde3cb0cc86d11aa836)), closes [#266](https://github.com/ajgon/opsworks_ruby/issues/266)
+
+
+### BREAKING CHANGES
+
+* By default new list of SSL certificates is used.
+
+It should not affect any of your current deployments, but if you start
+seeing SSL errors, the first thing you should check, is disabling
+`node['patches']['chef12_ssl_fix']` option.
+
+See https://github.com/ajgon/opsworks_ruby/issues/268 for more
+information.
+
+
+
+## [1.20.3](https://github.com/ajgon/opsworks_ruby/compare/v1.20.2...v1.20.3) (2021-05-06)
+
+
+### Features
+
+* **webserver:** apache2 - configurable `mod_status` ([a82335d](https://github.com/ajgon/opsworks_ruby/commit/a82335d4ef90782dfdbf4fba97690f73d18cc62a)), closes [#259](https://github.com/ajgon/opsworks_ruby/issues/259)
+
+
+
+## [1.20.2](https://github.com/ajgon/opsworks_ruby/compare/v1.20.1...v1.20.2) (2021-02-07)
+
+
+### Bug Fixes
+
+* run `monit reload` only once, after `configure hook` ([1b784d1](https://github.com/ajgon/opsworks_ruby/commit/1b784d15c7003490ef4691cab29e4a49dec91cd0)), closes [#251](https://github.com/ajgon/opsworks_ruby/issues/251)
+
+
+
+## [1.20.1](https://github.com/ajgon/opsworks_ruby/compare/v1.20.0...v1.20.1) (2020-12-12)
+
+
+### Features
+
+* **webserver:** add CORS for /packs endpoints ([ede019d](https://github.com/ajgon/opsworks_ruby/commit/ede019dce9472f7bdf5f4c6f0fdd0c0e8df59f37)), closes [#248](https://github.com/ajgon/opsworks_ruby/issues/248)
+
+
+
+# [1.20.0](https://github.com/ajgon/opsworks_ruby/compare/v1.19.0...v1.20.0) (2020-12-08)
+
+
+### Bug Fixes
+
+* **setup:** fix fullstaq key url ([#247](https://github.com/ajgon/opsworks_ruby/issues/247)) ([62ced10](https://github.com/ajgon/opsworks_ruby/commit/62ced108e339c9932a7ace310ee0b2b5303d497c))
+
+
+### Features
+
+* **appserver:** move appserver processes to foreground ([37b9465](https://github.com/ajgon/opsworks_ruby/commit/37b9465733c5c3b201fd9ce8df75695848c4c0bf)), closes [#244](https://github.com/ajgon/opsworks_ruby/issues/244)
+* **deploy:** use revision-based deploy provider ([#245](https://github.com/ajgon/opsworks_ruby/issues/245)) ([27887e6](https://github.com/ajgon/opsworks_ruby/commit/27887e6b50d94be77b28ee40166019b3f5b92b44))
+
+
+### BREAKING CHANGES
+
+* **appserver:** Theoretically everything should work out of the box,
+and you shouldn't notice any change on your environment. However if your
+appserver start behave oddly (or probably - won't start at all) - this
+may be the first reason for that. Check generated monit files, check if
+monit is running and also check the syslog (monit is configured to write
+all the appserver output there).
+
+
+
+# [1.19.0](https://github.com/ajgon/opsworks_ruby/compare/v1.18.1...v1.19.0) (2020-08-02)
+
+
+### Features
+
+* **deploy:** include deploy resource polyfill ([4f6d6fd](https://github.com/ajgon/opsworks_ruby/commit/4f6d6fd634e949ee7751664d7da5061a1d2ea748)), closes [#242](https://github.com/ajgon/opsworks_ruby/issues/242)
+
+
+
+## [1.18.1](https://github.com/ajgon/opsworks_ruby/compare/v1.18.0...v1.18.1) (2020-05-13)
+
+
+### Bug Fixes
+
+* **setup:** link fullstaq ruby to /usr/local/bin ([559c015](https://github.com/ajgon/opsworks_ruby/commit/559c0158b80182326c371ed366259ef4ef7d0913)), closes [#237](https://github.com/ajgon/opsworks_ruby/issues/237)
+
+
+
+# [1.18.0](https://github.com/ajgon/opsworks_ruby/compare/v1.17.0...v1.18.0) (2020-02-29)
+
+
+### Bug Fixes
+
+* **appserver:** fix .env and application.yml symlinks creation ([0580955](https://github.com/ajgon/opsworks_ruby/commit/05809558c5aa1eb10dd4e883f2e2dcfd7654b712)), closes [#232](https://github.com/ajgon/opsworks_ruby/issues/232)
+
+
+### Features
+
+* **appserver:** Add new appserver config params for passenger ([#227](https://github.com/ajgon/opsworks_ruby/issues/227)) ([0500521](https://github.com/ajgon/opsworks_ruby/commit/050052148c543c557783589cf0347fd026f16bfd))
+* **setup:** add support for fullstaq ruby repos ([1489d01](https://github.com/ajgon/opsworks_ruby/commit/1489d01c14caf51d2150784db09cfdecfddf281a)), closes [#229](https://github.com/ajgon/opsworks_ruby/issues/229)
+
+
+
 # [1.17.0](https://github.com/ajgon/opsworks_ruby/compare/v1.16.0...v1.17.0) (2019-11-23)
 
 
