@@ -87,11 +87,9 @@ def every_enabled_application
   end
 end
 
-def every_enabled_rds(context, application)
+def every_enabled_rds(context, application, &block)
   data = [rdses.presence, Drivers::Db::Factory.build(context, application)].flatten.compact
-  data.each do |rds|
-    yield rds
-  end
+  data.each(&block)
 end
 
 def perform_bundle_install(shared_path, envs = {})
@@ -127,4 +125,11 @@ def enable_mod_passenger_repo(context)
     keyserver 'keyserver.ubuntu.com'
     key '561F9B9CAC40B2F7'
   end
+end
+
+def append_to_overwritable_defaults(field, options) # rubocop:disable Metrics/AbcSize
+  if node.default['deploy'][app['shortname']]['global'][field].blank?
+    node.default['deploy'][app['shortname']]['global'][field] = node['defaults']['global'][field]
+  end
+  node.default['deploy'][app['shortname']]['global'][field].merge!(options)
 end

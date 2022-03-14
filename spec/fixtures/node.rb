@@ -81,8 +81,7 @@ DEFAULT_NODE = {
     },
     appserver: {
       adapter: 'unicorn',
-      worker_processes: 8,
-      after_deploy: 'stop-start'
+      worker_processes: 8
     },
     webserver: {
       adapter: 'nginx',
@@ -104,7 +103,7 @@ DEFAULT_NODE = {
   }
 }.freeze
 
-def node(override = {}, deep_merge = false)
+def node(override = {}, deep_merge = false) # rubocop:disable Style/OptionalBooleanParameter
   item =
     if deep_merge
       RubyOpsworksTests::DeepMergeableHash.new(DEFAULT_NODE).deep_merge(override)

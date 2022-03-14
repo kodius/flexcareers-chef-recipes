@@ -7,7 +7,7 @@
 require 'spec_helper'
 
 describe 'opsworks_ruby::shutdown' do
-  let(:chef_run) do
+  cached(:chef_run) do
     ChefSpec::SoloRunner.new(platform: 'ubuntu', version: '14.04') do |solo_node|
       solo_node.set['deploy'] = node['deploy']
     end.converge(described_recipe)
@@ -15,6 +15,9 @@ describe 'opsworks_ruby::shutdown' do
   before do
     stub_search(:aws_opsworks_app, '*:*').and_return([aws_opsworks_app])
     stub_search(:aws_opsworks_rds_db_instance, '*:*').and_return([aws_opsworks_rds_db_instance])
+    stub_command('monit status | grep -q puma_dummy_project').and_return(true)
+    stub_command('monit status | grep -q thin_dummy_project').and_return(true)
+    stub_command('monit status | grep -q unicorn_dummy_project').and_return(true)
   end
 
   it 'works' do

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+$VERBOSE = nil
+
 require 'chefspec'
 require 'chefspec/berkshelf'
 require 'pathname'
@@ -29,7 +31,7 @@ module RubyOpsworksTests
       @target.dup.merge!(other) do |key, old_val, new_val|
         if old_val.is_a?(Hash) && new_val.is_a?(Hash)
           DeepMergeableHash.new(old_val).deep_merge(new_val, &block)
-        elsif block_given?
+        elsif block
           yield(key, old_val, new_val)
         else
           new_val
@@ -43,7 +45,7 @@ end
 require File.expand_path('../libraries/all.rb', __dir__)
 
 # Require all fixtures
-Dir[File.expand_path('fixtures/*.rb', __dir__)].each { |f| require f }
+Dir[File.expand_path('fixtures/*.rb', __dir__)].sort.each { |f| require f }
 
 RSpec.configure do |config|
   config.log_level = :error

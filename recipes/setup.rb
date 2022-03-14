@@ -9,6 +9,16 @@ include_recipe 'apt'
 
 prepare_recipe
 
+if node['patches']['chef12_ssl_fix']
+  remote_file 'Copy more recent root certificate into Chef' do
+    path '/opt/chef/embedded/ssl/certs/cacert.pem'
+    source 'file:///etc/ssl/certs/ca-certificates.crt'
+    owner 'root'
+    group 'root'
+    mode '0644'
+  end
+end
+
 # Upgrade chef
 # Taken from `chef-upgrade` cookbook <https://github.com/inopinatus/chef-upgrade> by Josh Goodall
 # The Chef updater will try to kill its own process. This causes setup failure.
@@ -75,14 +85,93 @@ if node['use-nodejs']
 end
 
 # Ruby and bundler
-if node['platform_family'] == 'debian'
-  node.default['ruby-ng']['ruby_version'] = node['ruby-version']
-  include_recipe 'ruby-ng::dev'
+if node['ruby-provider'] == 'fullstaq'
+  # fullstaq-ruby provider
+  if node['platform_family'] == 'debian'
+    package 'gnupg2'
+
+    # For whatever reason `apt_repository.key` doesn't work here.
+    remote_file "#{Chef::Config[:file_cache_path]}/fullstaq-ruby.asc" do
+      source 'https://raw.githubusercontent.com/fullstaq-labs/fullstaq-ruby-server-edition/main/fullstaq-ruby.asc'
+    end
+
+    execute 'add fullstaq repository key' do
+      command "apt-key add #{Chef::Config[:file_cache_path]}/fullstaq-ruby.asc"
+      user 'root'
+    end
+
+    apt_repository 'fullstaq-ruby' do
+      uri 'https://apt.fullstaqruby.org'
+      distribution "#{node['lsb']['id'].downcase}-#{node['lsb']['release']}"
+      components %w[main]
+      only_if { node['ruby-provider'] == 'fullstaq' }
+    end
+  else
+    yum_repository 'fullstaq-ruby' do
+      baseurl 'https://yum.fullstaqruby.org/centos-7/$basearch'
+      enabled true
+      gpgcheck false
+      gpgkey 'https://raw.githubusercontent.com/fullstaq-labs/fullstaq-ruby-server-edition/main/fullstaq-ruby.asc'
+      repo_gpgcheck true
+      sslverify true
+      only_if { node['ruby-provider'] == 'fullstaq' }
+    end
+  end
+
+  ruby_package_ver = [node['ruby-version'], node['ruby-variant']].select(&:present?).join('-')
+  path = "/usr/lib/fullstaq-ruby/versions/#{ruby_package_ver}/bin:" \
+         '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games'
+
+  package "fullstaq-ruby-#{ruby_package_ver}"
+
+  template '/etc/environment' do
+    source 'environment.erb'
+    mode 0o664
+    owner 'root'
+    group 'root'
+    variables(environment: { 'PATH' => path })
+  end
+
+  execute 'update bundler' do
+    command "/usr/lib/fullstaq-ruby/versions/#{ruby_package_ver}/bin/gem update bundler"
+    user 'root'
+    environment('PATH' => path)
+  end
+
+  link '/usr/local/bin/bundle' do
+    to "/usr/lib/fullstaq-ruby/versions/#{ruby_package_ver}/bin/bundle"
+  end
+
+  link '/usr/local/bin/ruby' do
+    to "/usr/lib/fullstaq-ruby/versions/#{ruby_package_ver}/bin/ruby"
+  end
 else
-  ruby_pkg_version = node['ruby-version'].split('.')[0..1]
-  package "ruby#{ruby_pkg_version.join('')}"
-  package "ruby#{ruby_pkg_version.join('')}-devel"
-  execute "/usr/sbin/alternatives --set ruby /usr/bin/ruby#{ruby_pkg_version.join('.')}"
+  # ruby-ng provider
+  if node['platform_family'] == 'debian'
+    node.default['ruby-ng']['ruby_version'] = node['ruby-version']
+    include_recipe 'ruby-ng::dev'
+
+    link '/usr/local/bin/bundle' do
+      to '/usr/bin/bundle'
+    end
+  else
+    ruby_pkg_version = node['ruby-version'].split('.')[0..1]
+    package "ruby#{ruby_pkg_version.join}"
+    package "ruby#{ruby_pkg_version.join}-devel"
+    execute "/usr/sbin/alternatives --set ruby /usr/bin/ruby#{ruby_pkg_version.join('.')}"
+
+    link '/usr/local/bin/bundle' do
+      to '/usr/local/bin/bundler'
+    end
+  end
+
+  bundler2_applicable = Gem::Requirement.new('>= 3.0.0.beta1').satisfied_by?(
+    Gem::Version.new(Gem::VERSION)
+  )
+  gem_package 'bundler' do
+    action :install
+    version '~> 1' unless bundler2_applicable
+  end
 end
 
 apt_repository 'apache2' do
@@ -102,24 +191,6 @@ apt_repository 'nginx' do
   only_if { node['defaults']['webserver']['adapter'] == 'nginx' }
 end
 
-bundler2_applicable = Gem::Requirement.new('>= 3.0.0.beta1').satisfied_by?(
-  Gem::Version.new(Gem::VERSION)
-)
-gem_package 'bundler' do
-  action :install
-  version '~> 1' unless bundler2_applicable
-end
-
-if node['platform_family'] == 'debian'
-  link '/usr/local/bin/bundle' do
-    to '/usr/bin/bundle'
-  end
-else
-  link '/usr/local/bin/bundle' do
-    to '/usr/local/bin/bundler'
-  end
-end
-
 execute 'yum-config-manager --enable epel' if node['platform_family'] == 'rhel'
 
 every_enabled_application do |application|
@@ -135,4 +206,10 @@ every_enabled_application do |application|
   webserver = Drivers::Webserver::Factory.build(self, application)
 
   fire_hook(:setup, items: databases + [source, framework, appserver, worker, webserver])
+end
+
+# setup hooks for appservers and workers may need to reload monit configs
+execute 'monit reload' do
+  action :nothing
+  only_if 'which monit'
 end

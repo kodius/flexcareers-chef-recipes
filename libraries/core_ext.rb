@@ -6,7 +6,7 @@ class Object
   end
 
   def try!(*methods, &block)
-    if methods.empty? && block_given?
+    if methods.empty? && block
       if block.arity.zero?
         instance_eval(&block)
       else
@@ -50,10 +50,10 @@ class Hash
   def symbolize_keys
     each_with_object({}) do |(key, value), options|
       options[(begin
-                 key.to_sym
-               rescue StandardError
-                 key
-               end) || key] = value
+        key.to_sym
+      rescue StandardError
+        key
+      end) || key] = value
     end
   end
 

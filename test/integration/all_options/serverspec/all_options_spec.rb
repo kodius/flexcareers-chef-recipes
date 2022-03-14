@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 describe 'opsworks_ruby::setup' do
-  describe package('ruby2.6') do
+  describe package('ruby2.7') do
     it { should be_installed }
   end
 
@@ -96,14 +96,6 @@ describe 'opsworks_ruby::configure' do
       its(:content) { should include 'worker_timeout 120' }
       its(:content) { should_not include 'quiet' }
     end
-
-    describe file('/srv/www/dummy_project/shared/scripts/puma.service') do
-      its(:content) { should include 'ENV[\'ENV_VAR1\'] = "test"' }
-      its(:content) { should include 'ENV[\'RAILS_ENV\'] = "staging"' }
-      its(:content) { should include 'ENV[\'HOME\'] = "/home/deploy"' }
-      its(:content) { should include 'ENV[\'USER\'] = "deploy"' }
-      its(:content) { should include 'PID_PATH="/run/lock/dummy_project/puma.pid"' }
-    end
   end
 
   context 'framework' do
@@ -180,6 +172,26 @@ describe 'opsworks_ruby::deploy' do
       its(:content) { should include 'ENV_VAR1="test"' }
       its(:content) { should include 'ENV_VAR2="some data"' }
       its(:content) { should include 'RAILS_ENV="staging"' }
+    end
+
+    describe file('/srv/www/dummy_project/current/public/system') do
+      it { should be_symlink }
+    end
+
+    describe file('/srv/www/dummy_project/current/public/assets') do
+      it { should be_symlink }
+    end
+
+    describe file('/srv/www/dummy_project/current/tmp/cache') do
+      it { should be_symlink }
+    end
+
+    describe file('/srv/www/dummy_project/current/tmp/pids') do
+      it { should be_symlink }
+    end
+
+    describe file('/srv/www/dummy_project/current/log') do
+      it { should be_symlink }
     end
 
     describe file('/srv/www/dummy_project/current/.env') do

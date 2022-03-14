@@ -1,0 +1,30 @@
+# Supported Technologies
+
+-  Database
+    - [MariaDB](https://mariadb.org/)
+    - [MySQL](https://www.mysql.com/)
+    - [PostgreSQL](https://www.postgresql.org/)
+    - [Sqlite3](https://www.sqlite.org/)
+- Sources
+    - [Amazon S3](https://aws.amazon.com/s3/)
+    - [Git](https://git-scm.com/)
+- Framework
+    - Null (no framework)
+    - [hanami.rb](http://hanamirb.org/)
+    - [Padrino](http://padrinorb.com/)
+    - [Ruby on Rails](http://rubyonrails.org/)
+- App server
+    - Null (no appserver)
+    - [Puma](http://puma.io/)
+    - [Thin](https://github.com/macournoyer/thin)
+    - [Unicorn](https://yhbt.net/unicorn/)
+- Web server
+    - Null (no webserver)
+    - [Apache2](https://httpd.apache.org/)
+    - [nginx](https://nginx.org/)
+- Worker
+    - Null (no worker)
+    - [delayed_job](https://github.com/collectiveidea/delayed_job)
+    - [resque](https://resque.github.io/)
+    - [sidekiq](http://sidekiq.org/)
+    - [shoryuken](https://github.com/phstc/shoryuken)

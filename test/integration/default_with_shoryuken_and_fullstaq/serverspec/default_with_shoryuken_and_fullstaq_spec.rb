@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 describe 'opsworks_ruby::setup' do
-  describe package('ruby2.6') do
+  describe package('fullstaq-ruby-2.6-jemalloc') do
     it { should be_installed }
   end
 
@@ -12,6 +12,10 @@ describe 'opsworks_ruby::setup' do
   end
 
   describe package('git') do
+    it { should be_installed }
+  end
+
+  describe package('gnupg2') do
     it { should be_installed }
   end
 
@@ -25,6 +29,12 @@ describe 'opsworks_ruby::setup' do
 
   describe file('/usr/local/bin/bundle') do
     it { should be_symlink }
+  end
+
+  describe file('/etc/environment') do
+    its(:content) do
+      should include 'PATH="/usr/lib/fullstaq-ruby/versions/2.6-jemalloc/bin'
+    end
   end
 end
 
@@ -74,14 +84,6 @@ describe 'opsworks_ruby::configure' do
       its(:content) { should include 'unix:///srv/www/dummy_project/shared/sockets/puma.sock' }
       its(:content) { should include 'environment "production"' }
     end
-
-    describe file('/srv/www/dummy_project/shared/scripts/puma.service') do
-      its(:content) { should include 'ENV[\'ENV_VAR1\'] = "test"' }
-      its(:content) { should include 'ENV[\'RAILS_ENV\'] = "production"' }
-      its(:content) { should include 'ENV[\'HOME\'] = "/home/deploy"' }
-      its(:content) { should include 'ENV[\'USER\'] = "deploy"' }
-      its(:content) { should include 'PID_PATH="/run/lock/dummy_project/puma.pid"' }
-    end
   end
 
   context 'framework' do
@@ -112,7 +114,7 @@ describe 'opsworks_ruby::configure' do
     describe file('/etc/monit/conf.d/shoryuken_dummy_project.monitrc') do
       its(:content) do
         should include 'bundle exec shoryuken -C /srv/www/dummy_project/shared/config/shoryuken_dummy_project-1.yml ' \
-                        '-P /run/lock/shoryuken_dummy_project-1.pid -R'
+                       '-P /run/lock/shoryuken_dummy_project-1.pid -R'
       end
       its(:content) { should include 'kill -s TERM $(cat /run/lock/shoryuken_dummy_project-1.pid)' }
     end
